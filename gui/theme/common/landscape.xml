@@ -3879,6 +3879,9 @@
 						<action function="page">confirm_action</action>
 					</actions>
 				</listitem>
+				<listitem name="EDK2 Launcher (not enabled)">
+					<action function="page">edk2_status</action>
+				</listitem>
 			</listbox>
 
 			<action>
@@ -3889,6 +3892,47 @@
 			<action>
 				<touch key="back"/>
 				<action function="page">main</action>
+			</action>
+		</page>
+
+
+		<page name="edk2_status">
+			<template name="page"/>
+
+			<text style="text_l">
+				<placement x="%col1_x_header%" y="%row3_header_y%"/>
+				<text>EDK2 Launcher</text>
+			</text>
+
+			<text style="text_m_fail">
+				<placement x="%center_x%" y="%row7_y%" placement="5"/>
+				<text>Launcher is not enabled yet.</text>
+			</text>
+
+			<text style="text_m">
+				<placement x="%center_x%" y="%row8_y%" placement="5"/>
+				<text>BootShim must be loaded by the bootloader.</text>
+			</text>
+
+			<text style="text_m">
+				<placement x="%center_x%" y="%row9_y%" placement="5"/>
+				<text>TWRP cannot safely execute it directly.</text>
+			</text>
+
+			<text style="text_m">
+				<placement x="%center_x%" y="%row10_y%" placement="5"/>
+				<text>No boot, recovery or vbmeta partition is modified.</text>
+			</text>
+
+			<button style="main_button_half_width">
+				<placement x="%col1_x_left%" y="%row15a_y%"/>
+				<text>Back to Advanced</text>
+				<action function="page">advanced</action>
+			</button>
+
+			<action>
+				<touch key="back"/>
+				<action function="page">advanced</action>
 			</action>
 		</page>
 
