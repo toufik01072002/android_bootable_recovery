@@ -4059,17 +4059,17 @@
 			<text style="text_m">
 				<condition var1="tw_edk2_valid" op="!=" var2="1"/>
 				<placement x="%center_x%" y="%row8_y%" placement="5"/>
-				<text>Flash EDK2 boot.img to boot partition first.</text>
+				<text>Flash EDK2 boot.img to boot partition via Odin first.</text>
 			</text>
 
 			<text style="text_m">
 				<placement x="%center_x%" y="%row9_y%" placement="5"/>
-				<text>BootShim must be loaded by the bootloader.</text>
+				<text>BootShim in boot.img is loaded by Samsung bootloader.</text>
 			</text>
 
 			<text style="text_m">
 				<placement x="%center_x%" y="%row10_y%" placement="5"/>
-				<text>TWRP cannot safely execute it directly.</text>
+				<text>TWRP cannot execute EDK2 directly from recovery.</text>
 			</text>
 
 			<text style="text_m">
@@ -4080,10 +4080,10 @@
 			<button style="main_button_half_height">
 				<condition var1="tw_edk2_valid" op="=" var2="1"/>
 				<placement x="%indent%" y="%row15a_y%"/>
-				<text>Reboot to Bootloader (Load EDK2)</text>
+				<text>Reboot to System (Boot EDK2)</text>
 				<actions>
-					<action function="set">tw_reboot_arg=bootloader</action>
-					<action function="reboot">bootloader</action>
+					<action function="set">tw_reboot_arg=system</action>
+					<action function="reboot">system</action>
 				</actions>
 			</button>
 

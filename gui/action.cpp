@@ -1107,11 +1107,11 @@ int GUIAction::edk2validate(std::string arg __unused)
 	char kernel_header[4096];
 	bytes_read = read(fd, kernel_header, sizeof(kernel_header));
 
-	// Check for BootShim ARM64 magic "ARM\x64" (typically at offset 0x80 in kernel)
-	// BootShim places it at offset 128 (0x80) in the kernel binary
+	// Check for BootShim ARM64 magic "ARM\x64" (typically at offset 0x38 in kernel)
+	// BootShim places it at offset 0x38 (0x80) in the kernel binary
 	bool found_bootshim = false;
 	if (bytes_read >= 136) {
-		if (memcmp(kernel_header + 128, "ARM\x64", 4) == 0) {
+		if (memcmp(kernel_header + 0x38, "ARM\x64", 4) == 0) {
 			found_bootshim = true;
 		}
 	}
@@ -1148,44 +1148,46 @@ int GUIAction::edk2validate(std::string arg __unused)
 		close(fd);
 	}
 
-	// Calculate SHA256 of kernel portion
-	fd = open(boot_img_path, O_RDONLY);
-	if (fd < 0) {
+	// Run external verification script (MANDATORY - fail-closed)
+	int ret = TWFunc::Exec_Cmd("/system/bin/edk2_verify.sh");
+	if (ret != 0) {
 		DataManager::SetValue("tw_edk2_valid", 0);
-		DataManager::SetValue("tw_edk2_error", "Cannot reopen for SHA256");
+		DataManager::SetValue("tw_edk2_error", "EDK2 verification script failed or not available");
 		operation_end(1);
 		return 0;
 	}
 
-	lseek(fd, 2048, SEEK_SET);
-
-	// Use sha256sum command for simplicity (available in recovery)
-	close(fd);
-
-	// Run external verification script if available
-	int ret = TWFunc::Exec_Cmd("/system/bin/edk2_verify.sh");
-	if (ret != 0) {
-		// Script not available or failed - fall back to basic checks
-		LOGINFO("edk2_verify.sh not available or failed, using basic validation");
+	// Read verification result
+	FILE* fp = fopen("/tmp/edk2_verify_result", "r");
+	if (!fp) {
+		DataManager::SetValue("tw_edk2_valid", 0);
+		DataManager::SetValue("tw_edk2_error", "Verification result file not found");
+		operation_end(1);
+		return 0;
 	}
 
-	// Basic validation passed
+	bool found_sha256 = false;
+	char line[256];
+	while (fgets(line, sizeof(line), fp)) {
+		std::string l = line;
+		if (l.find("KERNEL_SHA256=") == 0) {
+			DataManager::SetValue("tw_edk2_sha256", l.substr(14));
+			found_sha256 = true;
+		}
+	}
+	fclose(fp);
+
+	if (!found_sha256) {
+		DataManager::SetValue("tw_edk2_valid", 0);
+		DataManager::SetValue("tw_edk2_error", "SHA256 not found in verification result");
+		operation_end(1);
+		return 0;
+	}
+
+	// Verification passed
 	DataManager::SetValue("tw_edk2_valid", 1);
 	DataManager::SetValue("tw_edk2_kernel_size", std::to_string(kernel_size));
 	DataManager::SetValue("tw_edk2_error", "");
-
-	// Try to read verification result from script
-	FILE* fp = fopen("/tmp/edk2_verify_result", "r");
-	if (fp) {
-		char line[256];
-		while (fgets(line, sizeof(line), fp)) {
-			std::string l = line;
-			if (l.find("KERNEL_SHA256=") == 0) {
-				DataManager::SetValue("tw_edk2_sha256", l.substr(14));
-			}
-		}
-		fclose(fp);
-	}
 
 	operation_end(0);
 	return 0;
