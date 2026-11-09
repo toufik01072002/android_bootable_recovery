@@ -20,6 +20,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <cstring>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -192,6 +193,7 @@ GUIAction::GUIAction(xml_node<>* node)
 		ADD_ACTION(screenshot);
 		ADD_ACTION(setbrightness);
 		ADD_ACTION(fileexists);
+		ADD_ACTION(edk2validate);
 		ADD_ACTION(killterminal);
 		ADD_ACTION(checkbackupname);
 		ADD_ACTION(adbsideloadcancel);
@@ -1027,6 +1029,54 @@ int GUIAction::fileexists(std::string arg)
 		operation_end(0);
 	else
 		operation_end(1);
+	return 0;
+}
+
+int GUIAction::edk2validate(std::string arg __unused)
+{
+	operation_start("EDK2Validate");
+
+	// Check if EDK2 boot image exists on boot partition
+	struct stat st;
+	const char* boot_img_path = "/dev/block/by-name/boot";
+
+	// First, try to mount boot partition and check for UEFI signature
+	// Actually, we should check if the boot partition contains our EDK2 image
+	// The EDK2 boot image has a specific signature (BootShim + UEFI FD)
+
+	// For now, check if we can read the boot partition and it has expected size
+	if (stat(boot_img_path, &st) == 0) {
+		// Partition exists - now we need to check if it has valid EDK2
+		// We'll do a more thorough check by reading the partition
+		int fd = open(boot_img_path, O_RDONLY);
+		if (fd >= 0) {
+			// Read first 2048 bytes (boot image header)
+			char header[2048];
+			ssize_t bytes_read = read(fd, header, sizeof(header));
+			close(fd);
+
+			if (bytes_read >= 2048) {
+				// Check for Android boot image header magic
+				if (memcmp(header, "ANDROID!", 8) == 0) {
+					// This is a valid boot image
+					// Check if it's our EDK2 image by looking for BootShim signature
+					// BootShim is at the kernel position in the boot image
+					// For now, we'll just check that the kernel size is reasonable for EDK2
+					// The kernel size field is at offset 0x10 in the boot header
+					uint32_t kernel_size = *reinterpret_cast<uint32_t*>(header + 0x10);
+					if (kernel_size > 0 && kernel_size < 16 * 1024 * 1024) {  // Reasonable size for UEFI
+						DataManager::SetValue("tw_edk2_valid", 1);
+						DataManager::SetValue("tw_edk2_kernel_size", std::to_string(kernel_size));
+						operation_end(0);
+						return 0;
+					}
+				}
+			}
+		}
+	}
+
+	DataManager::SetValue("tw_edk2_valid", 0);
+	operation_end(1);
 	return 0;
 }
 

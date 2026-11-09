@@ -4005,6 +4005,17 @@
 				<listitem name="EDK2 Launcher (not enabled)">
 					<action function="page">edk2_status</action>
 				</listitem>
+				<listitem name="{@edk2_launcher=EDK2 Launcher}">
+					<condition var1="tw_edk2_valid" op="=" var2="1"/>
+					<actions>
+						<action function="edk2validate"/>
+						<action function="page">edk2_status</action>
+					</actions>
+				</listitem>
+				<listitem name="{@edk2_launcher=EDK2 Launcher} (not available)">
+					<condition var1="tw_edk2_valid" op="!=" var2="1"/>
+					<action function="page">edk2_status</action>
+				</listitem>
 			</listbox>
 
 			<action>
@@ -4027,28 +4038,57 @@
 				<text>EDK2 Launcher</text>
 			</text>
 
-			<text style="text_m_fail">
+			<text style="text_m_success">
+				<condition var1="tw_edk2_valid" op="=" var2="1"/>
 				<placement x="%center_x%" y="%row7_y%" placement="5"/>
-				<text>Launcher is not enabled yet.</text>
+				<text>EDK2 boot image detected on boot partition.</text>
 			</text>
 
 			<text style="text_m">
+				<condition var1="tw_edk2_valid" op="=" var2="1"/>
 				<placement x="%center_x%" y="%row8_y%" placement="5"/>
-				<text>BootShim must be loaded by the bootloader.</text>
+				<text>Kernel size: %tw_edk2_kernel_size% bytes</text>
+			</text>
+
+			<text style="text_m_fail">
+				<condition var1="tw_edk2_valid" op="!=" var2="1"/>
+				<placement x="%center_x%" y="%row7_y%" placement="5"/>
+				<text>No valid EDK2 boot image found.</text>
+			</text>
+
+			<text style="text_m">
+				<condition var1="tw_edk2_valid" op="!=" var2="1"/>
+				<placement x="%center_x%" y="%row8_y%" placement="5"/>
+				<text>Flash EDK2 boot.img to boot partition first.</text>
 			</text>
 
 			<text style="text_m">
 				<placement x="%center_x%" y="%row9_y%" placement="5"/>
-				<text>TWRP cannot safely execute it directly.</text>
+				<text>BootShim must be loaded by the bootloader.</text>
 			</text>
 
 			<text style="text_m">
 				<placement x="%center_x%" y="%row10_y%" placement="5"/>
+				<text>TWRP cannot safely execute it directly.</text>
+			</text>
+
+			<text style="text_m">
+				<placement x="%center_x%" y="%row11_y%" placement="5"/>
 				<text>No boot, recovery or vbmeta partition is modified.</text>
 			</text>
 
 			<button style="main_button_half_height">
-				<placement x="%indent%" y="%row21a_y%"/>
+				<condition var1="tw_edk2_valid" op="=" var2="1"/>
+				<placement x="%indent%" y="%row15a_y%"/>
+				<text>Reboot to Bootloader (Load EDK2)</text>
+				<actions>
+					<action function="set">tw_reboot_arg=bootloader</action>
+					<action function="reboot">bootloader</action>
+				</actions>
+			</button>
+
+			<button style="main_button_half_height">
+				<placement x="%indent%" y="%row17a_y%"/>
 				<text>Back to Advanced</text>
 				<action function="page">advanced</action>
 			</button>

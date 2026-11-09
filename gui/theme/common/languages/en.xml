@@ -404,6 +404,7 @@
 		<string name="inject_twrp_confirm">Re-Inject TWRP?</string>
 		<string name="injecting_twrp">Re-Injecting TWRP...</string>
 		<string name="inject_twrp_complete">TWRP Injection Complete</string>
+		<string name="edk2_launcher">EDK2 Launcher</string>
 		<string name="swipe_to_confirm">Swipe to Confirm</string>
 		<string name="part_sd_hdr">Partition SD card</string>
 		<string name="invalid_partsd_sel">You must select a removable device</string>
