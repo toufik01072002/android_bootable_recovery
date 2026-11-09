@@ -4080,12 +4080,92 @@
 			<button style="main_button_half_height">
 				<condition var1="tw_edk2_valid" op="=" var2="1"/>
 				<placement x="%indent%" y="%row15a_y%"/>
-				<text>Reboot to System (Boot EDK2)</text>
+				<text>Boot UEFI (Launch EDK2)</text>
 				<actions>
-					<action function="set">tw_reboot_arg=system</action>
-					<action function="reboot">system</action>
+					<action function="edk2validate"/>
+					<action function="edk2boot"/>
+					<action function="page">edk2_boot</action>
 				</actions>
 			</button>
+
+			<button style="main_button_half_height">
+				<placement x="%indent%" y="%row17a_y%"/>
+				<text>Back to Advanced</text>
+				<action function="page">advanced</action>
+			</button>
+
+			<action>
+				<touch key="back"/>
+				<action function="page">advanced</action>
+			</action>
+		</page>
+
+
+		<page name="edk2_boot">
+			<template name="page"/>
+
+			<text style="text_l">
+				<placement x="%col1_x_header%" y="%row3_header_y%"/>
+				<text>Booting UEFI / EDK2</text>
+			</text>
+
+			<text style="text_m">
+				<placement x="%center_x%" y="%row7_y%" placement="5"/>
+				<text>Loading UEFI firmware via kexec...</text>
+			</text>
+
+			<text style="text_m">
+				<placement x="%center_x%" y="%row8_y%" placement="5"/>
+				<text>This will transfer control to EDK2.</text>
+			</text>
+
+			<text style="text_m_accent">
+				<placement x="%center_x%" y="%row10_y%" placement="5"/>
+				<text>Do not power off the device.</text>
+			</text>
+
+			<template name="console"/>
+			<template name="progress_bar"/>
+
+			<action>
+				<condition var1="tw_operation_state" var2="1"/>
+				<action function="page">edk2_boot_result</action>
+			</action>
+		</page>
+
+		<page name="edk2_boot_result">
+			<template name="page"/>
+
+			<text style="text_l">
+				<placement x="%col1_x_header%" y="%row3_header_y%"/>
+				<text>UEFI Boot Result</text>
+			</text>
+
+			<text style="text_m_fail">
+				<condition var1="tw_operation_status" op="!=" var2="0"/>
+				<placement x="%center_x%" y="%row7_y%" placement="5"/>
+				<text>UEFI boot failed.</text>
+			</text>
+
+			<text style="text_m_fail">
+				<condition var1="tw_operation_status" op="!=" var2="0"/>
+				<placement x="%center_x%" y="%row8_y%" placement="5"/>
+				<text>Error: %tw_edk2_error%</text>
+			</text>
+
+			<text style="text_m_success">
+				<condition var1="tw_operation_status" var2="0"/>
+				<placement x="%center_x%" y="%row7_y%" placement="5"/>
+				<text>kexec executed successfully.</text>
+			</text>
+
+			<text style="text_m">
+				<condition var1="tw_operation_status" var2="0"/>
+				<placement x="%center_x%" y="%row8_y%" placement="5"/>
+				<text>Control transferred to UEFI firmware.</text>
+			</text>
+
+			<template name="console"/>
 
 			<button style="main_button_half_height">
 				<placement x="%indent%" y="%row17a_y%"/>

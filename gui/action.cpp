@@ -195,6 +195,7 @@ GUIAction::GUIAction(xml_node<>* node)
 		ADD_ACTION(setbrightness);
 		ADD_ACTION(fileexists);
 		ADD_ACTION(edk2validate);
+		ADD_ACTION(edk2boot);
 		ADD_ACTION(killterminal);
 		ADD_ACTION(checkbackupname);
 		ADD_ACTION(adbsideloadcancel);
@@ -1037,122 +1038,27 @@ int GUIAction::edk2validate(std::string arg __unused)
 {
 	operation_start("EDK2Validate");
 
-	// Check if EDK2 boot image exists on boot partition
+	// Reset validation state at start (fail-closed)
+	DataManager::SetValue("tw_edk2_valid", 0);
+
+	// Validate EDK2 boot image in recovery ramdisk (read-only)
+	// The external script is the sole source of validation
+	const char* edk2_image_path = "/system/etc/edk2/boot.img";
+
+	// Check if EDK2 image exists in recovery ramdisk
 	struct stat st;
-	const char* boot_img_path = "/dev/block/by-name/boot";
-
-	// Check boot partition exists
-	if (stat(boot_img_path, &st) != 0) {
-		DataManager::SetValue("tw_edk2_valid", 0);
-		DataManager::SetValue("tw_edk2_error", "Boot partition not found");
+	if (stat(edk2_image_path, &st) != 0) {
+		DataManager::SetValue("tw_edk2_error", "EDK2 image not found in recovery ramdisk");
 		operation_end(1);
 		return 0;
-	}
-
-	// Read boot image header
-	int fd = open(boot_img_path, O_RDONLY);
-	if (fd < 0) {
-		DataManager::SetValue("tw_edk2_valid", 0);
-		DataManager::SetValue("tw_edk2_error", "Cannot open boot partition");
-		operation_end(1);
-		return 0;
-	}
-
-	char header[2048];
-	ssize_t bytes_read = read(fd, header, sizeof(header));
-	close(fd);
-
-	if (bytes_read < 2048) {
-		DataManager::SetValue("tw_edk2_valid", 0);
-		DataManager::SetValue("tw_edk2_error", "Failed to read boot image header");
-		operation_end(1);
-		return 0;
-	}
-
-	// Check Android boot magic
-	if (memcmp(header, "ANDROID!", 8) != 0) {
-		DataManager::SetValue("tw_edk2_valid", 0);
-		DataManager::SetValue("tw_edk2_error", "Invalid boot image magic");
-		operation_end(1);
-		return 0;
-	}
-
-	// Extract kernel size (offset 0x10, 4 bytes, little-endian)
-	uint32_t kernel_size = *reinterpret_cast<uint32_t*>(header + 0x10);
-
-	// Check kernel size range (1 MiB - 16 MiB for UEFI)
-	const uint32_t MIN_KERNEL_SIZE = 1048576;
-	const uint32_t MAX_KERNEL_SIZE = 16777216;
-
-	if (kernel_size < MIN_KERNEL_SIZE || kernel_size > MAX_KERNEL_SIZE) {
-		DataManager::SetValue("tw_edk2_valid", 0);
-		DataManager::SetValue("tw_edk2_error", "Kernel size out of range: " + std::to_string(kernel_size));
-		operation_end(1);
-		return 0;
-	}
-
-	// Read kernel data for SHA256 and BootShim verification
-	fd = open(boot_img_path, O_RDONLY);
-	if (fd < 0) {
-		DataManager::SetValue("tw_edk2_valid", 0);
-		DataManager::SetValue("tw_edk2_error", "Cannot reopen boot partition");
-		operation_end(1);
-		return 0;
-	}
-
-	// Skip to kernel (page size offset = 2048)
-	lseek(fd, 2048, SEEK_SET);
-
-	// Read first 4096 bytes of kernel to check BootShim
-	char kernel_header[4096];
-	bytes_read = read(fd, kernel_header, sizeof(kernel_header));
-
-	// Check for BootShim ARM64 magic "ARM\x64" (typically at offset 0x38 in kernel)
-	// BootShim places it at offset 0x38 (0x80) in the kernel binary
-	bool found_bootshim = false;
-	if (bytes_read >= 136) {
-		if (memcmp(kernel_header + 0x38, "ARM\x64", 4) == 0) {
-			found_bootshim = true;
-		}
-	}
-
-	// Also check at offset 0 (in case no Linux header in kernel)
-	if (!found_bootshim && bytes_read >= 4) {
-		if (memcmp(kernel_header, "ARM\x64", 4) == 0) {
-			found_bootshim = true;
-		}
-	}
-
-	if (!found_bootshim) {
-		// Read more to check for UEFI FD signature (_FVH)
-		lseek(fd, 2048 + kernel_size - 4096, SEEK_SET);
-		char end_data[4096];
-		bytes_read = read(fd, end_data, sizeof(end_data));
-		close(fd);
-
-		bool found_fv = false;
-		for (size_t i = 0; i + 4 <= (size_t)bytes_read; i++) {
-			if (memcmp(end_data + i, "_FVH", 4) == 0) {
-				found_fv = true;
-				break;
-			}
-		}
-
-		if (!found_fv) {
-			DataManager::SetValue("tw_edk2_valid", 0);
-			DataManager::SetValue("tw_edk2_error", "BootShim/UEFI signature not found");
-			operation_end(1);
-			return 0;
-		}
-	} else {
-		close(fd);
 	}
 
 	// Run external verification script (MANDATORY - fail-closed)
+	// The script validates: Android magic, page_size, kernel_size at 0x08,
+	// BootShim magic at kernel+0x38, _FVH signature, SHA256
 	int ret = TWFunc::Exec_Cmd("/system/bin/edk2_verify.sh");
 	if (ret != 0) {
-		DataManager::SetValue("tw_edk2_valid", 0);
-		DataManager::SetValue("tw_edk2_error", "EDK2 verification script failed or not available");
+		DataManager::SetValue("tw_edk2_error", "EDK2 verification script failed");
 		operation_end(1);
 		return 0;
 	}
@@ -1160,13 +1066,13 @@ int GUIAction::edk2validate(std::string arg __unused)
 	// Read verification result
 	FILE* fp = fopen("/tmp/edk2_verify_result", "r");
 	if (!fp) {
-		DataManager::SetValue("tw_edk2_valid", 0);
 		DataManager::SetValue("tw_edk2_error", "Verification result file not found");
 		operation_end(1);
 		return 0;
 	}
 
 	bool found_sha256 = false;
+	bool found_kernel_size = false;
 	char line[256];
 	while (fgets(line, sizeof(line), fp)) {
 		std::string l = line;
@@ -1174,22 +1080,44 @@ int GUIAction::edk2validate(std::string arg __unused)
 			DataManager::SetValue("tw_edk2_sha256", l.substr(14));
 			found_sha256 = true;
 		}
+		if (l.find("KERNEL_SIZE=") == 0) {
+			DataManager::SetValue("tw_edk2_kernel_size", l.substr(12));
+			found_kernel_size = true;
+		}
 	}
 	fclose(fp);
 
-	if (!found_sha256) {
-		DataManager::SetValue("tw_edk2_valid", 0);
-		DataManager::SetValue("tw_edk2_error", "SHA256 not found in verification result");
+	if (!found_sha256 || !found_kernel_size) {
+		DataManager::SetValue("tw_edk2_error", "Incomplete verification result");
 		operation_end(1);
 		return 0;
 	}
 
 	// Verification passed
 	DataManager::SetValue("tw_edk2_valid", 1);
-	DataManager::SetValue("tw_edk2_kernel_size", std::to_string(kernel_size));
 	DataManager::SetValue("tw_edk2_error", "");
 
 	operation_end(0);
+	return 0;
+}
+
+int GUIAction::edk2boot(std::string arg __unused)
+{
+	operation_start("EDK2Boot");
+
+	// Check if EDK2 was validated
+	if (DataManager::GetIntValue("tw_edk2_valid") != 1) {
+		DataManager::SetValue("tw_edk2_error", "EDK2 not validated. Run validation first.");
+		operation_end(1);
+		return 0;
+	}
+
+	// TRANSFER MECHANISM NOT YET VALIDATED
+	// The kexec + trampoline backend is not considered functional.
+	// Execution is blocked until the transfer mechanism is validated.
+	DataManager::SetValue("tw_edk2_error", "Transfer mechanism not validated. UEFI boot blocked.");
+	gui_msg("edk2_boot_blocked=UEFI boot blocked: transfer mechanism (kexec+trampoline) not validated.");
+	operation_end(1);
 	return 0;
 }
 
