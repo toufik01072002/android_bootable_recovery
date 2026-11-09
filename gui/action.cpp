@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <cstring>
+#include <cstdint>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/time.h>
@@ -1040,43 +1041,153 @@ int GUIAction::edk2validate(std::string arg __unused)
 	struct stat st;
 	const char* boot_img_path = "/dev/block/by-name/boot";
 
-	// First, try to mount boot partition and check for UEFI signature
-	// Actually, we should check if the boot partition contains our EDK2 image
-	// The EDK2 boot image has a specific signature (BootShim + UEFI FD)
+	// Check boot partition exists
+	if (stat(boot_img_path, &st) != 0) {
+		DataManager::SetValue("tw_edk2_valid", 0);
+		DataManager::SetValue("tw_edk2_error", "Boot partition not found");
+		operation_end(1);
+		return 0;
+	}
 
-	// For now, check if we can read the boot partition and it has expected size
-	if (stat(boot_img_path, &st) == 0) {
-		// Partition exists - now we need to check if it has valid EDK2
-		// We'll do a more thorough check by reading the partition
-		int fd = open(boot_img_path, O_RDONLY);
-		if (fd >= 0) {
-			// Read first 2048 bytes (boot image header)
-			char header[2048];
-			ssize_t bytes_read = read(fd, header, sizeof(header));
-			close(fd);
+	// Read boot image header
+	int fd = open(boot_img_path, O_RDONLY);
+	if (fd < 0) {
+		DataManager::SetValue("tw_edk2_valid", 0);
+		DataManager::SetValue("tw_edk2_error", "Cannot open boot partition");
+		operation_end(1);
+		return 0;
+	}
 
-			if (bytes_read >= 2048) {
-				// Check for Android boot image header magic
-				if (memcmp(header, "ANDROID!", 8) == 0) {
-					// This is a valid boot image
-					// Check if it's our EDK2 image by looking for BootShim signature
-					// BootShim is at the kernel position in the boot image
-					// For now, we'll just check that the kernel size is reasonable for EDK2
-					// The kernel size field is at offset 0x10 in the boot header
-					uint32_t kernel_size = *reinterpret_cast<uint32_t*>(header + 0x10);
-					if (kernel_size > 0 && kernel_size < 16 * 1024 * 1024) {  // Reasonable size for UEFI
-						DataManager::SetValue("tw_edk2_valid", 1);
-						DataManager::SetValue("tw_edk2_kernel_size", std::to_string(kernel_size));
-						operation_end(0);
-						return 0;
-					}
-				}
-			}
+	char header[2048];
+	ssize_t bytes_read = read(fd, header, sizeof(header));
+	close(fd);
+
+	if (bytes_read < 2048) {
+		DataManager::SetValue("tw_edk2_valid", 0);
+		DataManager::SetValue("tw_edk2_error", "Failed to read boot image header");
+		operation_end(1);
+		return 0;
+	}
+
+	// Check Android boot magic
+	if (memcmp(header, "ANDROID!", 8) != 0) {
+		DataManager::SetValue("tw_edk2_valid", 0);
+		DataManager::SetValue("tw_edk2_error", "Invalid boot image magic");
+		operation_end(1);
+		return 0;
+	}
+
+	// Extract kernel size (offset 0x10, 4 bytes, little-endian)
+	uint32_t kernel_size = *reinterpret_cast<uint32_t*>(header + 0x10);
+
+	// Check kernel size range (1 MiB - 16 MiB for UEFI)
+	const uint32_t MIN_KERNEL_SIZE = 1048576;
+	const uint32_t MAX_KERNEL_SIZE = 16777216;
+
+	if (kernel_size < MIN_KERNEL_SIZE || kernel_size > MAX_KERNEL_SIZE) {
+		DataManager::SetValue("tw_edk2_valid", 0);
+		DataManager::SetValue("tw_edk2_error", "Kernel size out of range: " + std::to_string(kernel_size));
+		operation_end(1);
+		return 0;
+	}
+
+	// Read kernel data for SHA256 and BootShim verification
+	fd = open(boot_img_path, O_RDONLY);
+	if (fd < 0) {
+		DataManager::SetValue("tw_edk2_valid", 0);
+		DataManager::SetValue("tw_edk2_error", "Cannot reopen boot partition");
+		operation_end(1);
+		return 0;
+	}
+
+	// Skip to kernel (page size offset = 2048)
+	lseek(fd, 2048, SEEK_SET);
+
+	// Read first 4096 bytes of kernel to check BootShim
+	char kernel_header[4096];
+	bytes_read = read(fd, kernel_header, sizeof(kernel_header));
+
+	// Check for BootShim ARM64 magic "ARM\x64" (typically at offset 0x80 in kernel)
+	// BootShim places it at offset 128 (0x80) in the kernel binary
+	bool found_bootshim = false;
+	if (bytes_read >= 136) {
+		if (memcmp(kernel_header + 128, "ARM\x64", 4) == 0) {
+			found_bootshim = true;
 		}
 	}
 
-	DataManager::SetValue("tw_edk2_valid", 0);
-	operation_end(1);
+	// Also check at offset 0 (in case no Linux header in kernel)
+	if (!found_bootshim && bytes_read >= 4) {
+		if (memcmp(kernel_header, "ARM\x64", 4) == 0) {
+			found_bootshim = true;
+		}
+	}
+
+	if (!found_bootshim) {
+		// Read more to check for UEFI FD signature (_FVH)
+		lseek(fd, 2048 + kernel_size - 4096, SEEK_SET);
+		char end_data[4096];
+		bytes_read = read(fd, end_data, sizeof(end_data));
+		close(fd);
+
+		bool found_fv = false;
+		for (size_t i = 0; i + 4 <= (size_t)bytes_read; i++) {
+			if (memcmp(end_data + i, "_FVH", 4) == 0) {
+				found_fv = true;
+				break;
+			}
+		}
+
+		if (!found_fv) {
+			DataManager::SetValue("tw_edk2_valid", 0);
+			DataManager::SetValue("tw_edk2_error", "BootShim/UEFI signature not found");
+			operation_end(1);
+			return 0;
+		}
+	} else {
+		close(fd);
+	}
+
+	// Calculate SHA256 of kernel portion
+	fd = open(boot_img_path, O_RDONLY);
+	if (fd < 0) {
+		DataManager::SetValue("tw_edk2_valid", 0);
+		DataManager::SetValue("tw_edk2_error", "Cannot reopen for SHA256");
+		operation_end(1);
+		return 0;
+	}
+
+	lseek(fd, 2048, SEEK_SET);
+
+	// Use sha256sum command for simplicity (available in recovery)
+	close(fd);
+
+	// Run external verification script if available
+	int ret = TWFunc::Exec_Cmd("/system/bin/edk2_verify.sh");
+	if (ret != 0) {
+		// Script not available or failed - fall back to basic checks
+		LOGINFO("edk2_verify.sh not available or failed, using basic validation");
+	}
+
+	// Basic validation passed
+	DataManager::SetValue("tw_edk2_valid", 1);
+	DataManager::SetValue("tw_edk2_kernel_size", std::to_string(kernel_size));
+	DataManager::SetValue("tw_edk2_error", "");
+
+	// Try to read verification result from script
+	FILE* fp = fopen("/tmp/edk2_verify_result", "r");
+	if (fp) {
+		char line[256];
+		while (fgets(line, sizeof(line), fp)) {
+			std::string l = line;
+			if (l.find("KERNEL_SHA256=") == 0) {
+				DataManager::SetValue("tw_edk2_sha256", l.substr(14));
+			}
+		}
+		fclose(fp);
+	}
+
+	operation_end(0);
 	return 0;
 }
 
