@@ -3879,20 +3879,12 @@
 						<action function="page">confirm_action</action>
 					</actions>
 				</listitem>
-				<listitem name="EDK2 Launcher (not enabled)">
-					<action function="page">edk2_status</action>
-				</listitem>
 			</listbox>
 			<listitem name="{@edk2_launcher=EDK2 Launcher}">
-				<condition var1="tw_edk2_valid" op="=" var2="1"/>
-				<actions>
-					<action function="edk2validate"/>
-					<action function="page">edk2_status</action>
-				</actions>
-			</listitem>
-			<listitem name="{@edk2_launcher=EDK2 Launcher} (not available)">
-				<condition var1="tw_edk2_valid" op="!=" var2="1"/>
-				<action function="page">edk2_status</action>
+			        <actions>
+			                <action function="edk2validate"/>
+			                <action function="page">edk2_status</action>
+			        </actions>
 			</listitem>
 
 			<action>
@@ -3918,7 +3910,7 @@
 			<text style="text_m_success">
 				<condition var1="tw_edk2_valid" op="=" var2="1"/>
 				<placement x="%center_x%" y="%row7_y%" placement="5"/>
-				<text>EDK2 boot image detected on boot partition.</text>
+				<text>EDK2 image verified in recovery ramdisk.</text>
 			</text>
 
 			<text style="text_m">
@@ -3930,23 +3922,23 @@
 			<text style="text_m_fail">
 				<condition var1="tw_edk2_valid" op="!=" var2="1"/>
 				<placement x="%center_x%" y="%row7_y%" placement="5"/>
-				<text>No valid EDK2 boot image found.</text>
+				<text>No valid EDK2 image in recovery ramdisk.</text>
 			</text>
 
 			<text style="text_m">
 				<condition var1="tw_edk2_valid" op="!=" var2="1"/>
 				<placement x="%center_x%" y="%row8_y%" placement="5"/>
-				<text>Flash EDK2 boot.img to boot partition via Odin first.</text>
+				<text>EDK2 must be present in recovery ramdisk.</text>
 			</text>
 
 			<text style="text_m">
 				<placement x="%center_x%" y="%row9_y%" placement="5"/>
-				<text>BootShim in boot.img is loaded by Samsung bootloader.</text>
+				<text>UEFI transfer from TWRP is not validated.</text>
 			</text>
 
 			<text style="text_m">
 				<placement x="%center_x%" y="%row10_y%" placement="5"/>
-				<text>TWRP cannot execute EDK2 directly from recovery.</text>
+				<text>UEFI launch remains blocked for safety.</text>
 			</text>
 
 			<text style="text_m">
