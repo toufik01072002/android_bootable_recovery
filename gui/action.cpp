@@ -1043,7 +1043,7 @@ int GUIAction::edk2validate(std::string arg __unused)
 
 	// Validate EDK2 boot image in recovery ramdisk (read-only)
 	// The external script is the sole source of validation
-	const char* edk2_image_path = "/system/etc/edk2/boot.img";
+	const char* edk2_image_path = "/system/etc/edk2/UEFI";
 
 	// Check if EDK2 image exists in recovery ramdisk
 	struct stat st;
