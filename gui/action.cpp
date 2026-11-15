@@ -1075,12 +1075,11 @@ int GUIAction::edk2validate(std::string arg __unused)
 	char line[256];
 	while (fgets(line, sizeof(line), fp)) {
 		std::string l = line;
-		while (!l.empty() && (l[l.size() - 1] == '\\n' || l[l.size() - 1] == '\\r'))
+		while (!l.empty() && (l[l.size() - 1] == '\n' || l[l.size() - 1] == '\r'))
 			l.erase(l.size() - 1);
 
 		const std::string bundle_sha = "KERNEL_SHA256=";
 		const std::string bundle_size = "KERNEL_SIZE=";
-		const std::string vb_status = "VIRTUAL_BOOT_PREFLIGHT=";
 		const std::string vb_kernel = "VIRTUAL_BOOT_KERNEL_SHA256=";
 		const std::string vb_dtb = "VIRTUAL_BOOT_DTB_SHA256=";
 
