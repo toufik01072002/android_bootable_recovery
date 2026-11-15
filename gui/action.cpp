@@ -1138,8 +1138,8 @@ int GUIAction::edk2boot(std::string arg __unused)
 		return 0;
 	}
 
-	DataManager::SetValue("tw_edk2_error", "Virtual Boot kernel staged in RAM. Execution remains disabled.");
-	gui_msg("edk2_boot_staged=Virtual Boot kernel staged in RAM. Handoff execution remains disabled.");
+	DataManager::SetValue("tw_edk2_error", "Virtual Boot bundle validated. KEXEC loading and handoff remain disabled.");
+	gui_msg("edk2_boot_staged=Virtual Boot bundle validated. KEXEC loading and handoff remain disabled.");
 	operation_end(0);
 	return 0;
 }
