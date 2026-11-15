@@ -1038,14 +1038,13 @@ int GUIAction::edk2validate(std::string arg __unused)
 {
 	operation_start("EDK2Validate");
 
-	// Reset validation state at start (fail-closed)
+	// Reset all validation state before each run (fail-closed).
 	DataManager::SetValue("tw_edk2_valid", 0);
+	DataManager::SetValue("tw_virtual_boot_preflight", 0);
+	DataManager::SetValue("tw_virtual_boot_kernel_sha256", "");
+	DataManager::SetValue("tw_virtual_boot_dtb_sha256", "");
 
-	// Validate EDK2 boot image in recovery ramdisk (read-only)
-	// The external script is the sole source of validation
 	const char* edk2_image_path = "/system/etc/edk2/UEFI";
-
-	// Check if EDK2 image exists in recovery ramdisk
 	struct stat st;
 	if (stat(edk2_image_path, &st) != 0) {
 		DataManager::SetValue("tw_edk2_error", "EDK2 image not found in recovery ramdisk");
@@ -1053,50 +1052,69 @@ int GUIAction::edk2validate(std::string arg __unused)
 		return 0;
 	}
 
-	// Run external verification script (MANDATORY - fail-closed)
-	// The script validates: Android magic, page_size, kernel_size at 0x08,
-	// BootShim magic at kernel+0x38, _FVH signature, SHA256
+	// The verifier removes its previous result before starting validation.
 	int ret = TWFunc::Exec_Cmd("/system/bin/edk2_verify.sh");
 	if (ret != 0) {
-		DataManager::SetValue("tw_edk2_error", "EDK2 verification script failed");
+		DataManager::SetValue("tw_edk2_error", "EDK2 / Virtual Boot preflight failed");
 		operation_end(1);
 		return 0;
 	}
 
-	// Read verification result
 	FILE* fp = fopen("/tmp/edk2_verify_result", "r");
 	if (!fp) {
-		DataManager::SetValue("tw_edk2_error", "Verification result file not found");
+		DataManager::SetValue("tw_edk2_error", "Fresh verification result file not found");
 		operation_end(1);
 		return 0;
 	}
 
 	bool found_sha256 = false;
 	bool found_kernel_size = false;
+	bool found_virtual_boot = false;
+	bool found_virtual_kernel_sha256 = false;
+	bool found_virtual_dtb_sha256 = false;
 	char line[256];
 	while (fgets(line, sizeof(line), fp)) {
 		std::string l = line;
-		if (l.find("KERNEL_SHA256=") == 0) {
-			DataManager::SetValue("tw_edk2_sha256", l.substr(14));
+		while (!l.empty() && (l[l.size() - 1] == '\\n' || l[l.size() - 1] == '\\r'))
+			l.erase(l.size() - 1);
+
+		const std::string bundle_sha = "KERNEL_SHA256=";
+		const std::string bundle_size = "KERNEL_SIZE=";
+		const std::string vb_status = "VIRTUAL_BOOT_PREFLIGHT=";
+		const std::string vb_kernel = "VIRTUAL_BOOT_KERNEL_SHA256=";
+		const std::string vb_dtb = "VIRTUAL_BOOT_DTB_SHA256=";
+
+		if (l.compare(0, bundle_sha.size(), bundle_sha) == 0) {
+			DataManager::SetValue("tw_edk2_sha256", l.substr(bundle_sha.size()));
 			found_sha256 = true;
 		}
-		if (l.find("KERNEL_SIZE=") == 0) {
-			DataManager::SetValue("tw_edk2_kernel_size", l.substr(12));
+		if (l.compare(0, bundle_size.size(), bundle_size) == 0) {
+			DataManager::SetValue("tw_edk2_kernel_size", l.substr(bundle_size.size()));
 			found_kernel_size = true;
+		}
+		if (l == "VIRTUAL_BOOT_PREFLIGHT=PASS")
+			found_virtual_boot = true;
+		if (l.compare(0, vb_kernel.size(), vb_kernel) == 0 && l.size() > vb_kernel.size()) {
+			DataManager::SetValue("tw_virtual_boot_kernel_sha256", l.substr(vb_kernel.size()));
+			found_virtual_kernel_sha256 = true;
+		}
+		if (l.compare(0, vb_dtb.size(), vb_dtb) == 0 && l.size() > vb_dtb.size()) {
+			DataManager::SetValue("tw_virtual_boot_dtb_sha256", l.substr(vb_dtb.size()));
+			found_virtual_dtb_sha256 = true;
 		}
 	}
 	fclose(fp);
 
-	if (!found_sha256 || !found_kernel_size) {
-		DataManager::SetValue("tw_edk2_error", "Incomplete verification result");
+	if (!found_sha256 || !found_kernel_size || !found_virtual_boot ||
+		!found_virtual_kernel_sha256 || !found_virtual_dtb_sha256) {
+		DataManager::SetValue("tw_edk2_error", "Incomplete EDK2 / Virtual Boot preflight result");
 		operation_end(1);
 		return 0;
 	}
 
-	// Verification passed
+	DataManager::SetValue("tw_virtual_boot_preflight", 1);
 	DataManager::SetValue("tw_edk2_valid", 1);
 	DataManager::SetValue("tw_edk2_error", "");
-
 	operation_end(0);
 	return 0;
 }
@@ -1105,16 +1123,14 @@ int GUIAction::edk2boot(std::string arg __unused)
 {
 	operation_start("EDK2Boot");
 
-	// Check if EDK2 was validated
-	if (DataManager::GetIntValue("tw_edk2_valid") != 1) {
-		DataManager::SetValue("tw_edk2_error", "EDK2 not validated. Run validation first.");
+	if (DataManager::GetIntValue("tw_edk2_valid") != 1 ||
+		DataManager::GetIntValue("tw_virtual_boot_preflight") != 1) {
+		DataManager::SetValue("tw_edk2_error", "EDK2 / Virtual Boot preflight not passed. Run validation first.");
 		operation_end(1);
 		return 0;
 	}
 
-	// Stage the first Virtual Boot kernel through kexec_load only.
-	// The script verifies the packaged kernel, DTB and initramfs hashes,
-	// then invokes "kexec -l". It never invokes "kexec -e" or reboot.
+	// Staging only. The handoff / kexec -e path remains intentionally disabled.
 	int ret = TWFunc::Exec_Cmd("/system/bin/sh /system/bin/virtual_boot_prepare.sh");
 	if (ret != 0) {
 		DataManager::SetValue("tw_edk2_error", "Virtual Boot staging failed. See /tmp/virtual_boot_prepare.log");
