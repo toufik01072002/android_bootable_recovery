@@ -1112,12 +1112,20 @@ int GUIAction::edk2boot(std::string arg __unused)
 		return 0;
 	}
 
-	// TRANSFER MECHANISM NOT YET VALIDATED
-	// The kexec + trampoline backend is not considered functional.
-	// Execution is blocked until the transfer mechanism is validated.
-	DataManager::SetValue("tw_edk2_error", "Transfer mechanism not validated. UEFI boot blocked.");
-	gui_msg("edk2_boot_blocked=UEFI boot blocked: transfer mechanism (kexec+trampoline) not validated.");
-	operation_end(1);
+	// Stage the first Virtual Boot kernel through kexec_load only.
+	// The script verifies the packaged kernel, DTB and initramfs hashes,
+	// then invokes "kexec -l". It never invokes "kexec -e" or reboot.
+	int ret = TWFunc::Exec_Cmd("/system/bin/sh /system/bin/virtual_boot_prepare.sh");
+	if (ret != 0) {
+		DataManager::SetValue("tw_edk2_error", "Virtual Boot staging failed. See /tmp/virtual_boot_prepare.log");
+		gui_msg("edk2_boot_blocked=Virtual Boot staging failed; no execution was attempted.");
+		operation_end(1);
+		return 0;
+	}
+
+	DataManager::SetValue("tw_edk2_error", "Virtual Boot kernel staged in RAM. Execution remains disabled.");
+	gui_msg("edk2_boot_staged=Virtual Boot kernel staged in RAM. Handoff execution remains disabled.");
+	operation_end(0);
 	return 0;
 }
 
