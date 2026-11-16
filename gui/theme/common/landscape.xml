@@ -3949,7 +3949,7 @@
 			<button style="main_button_half_width">
 				<condition var1="tw_edk2_valid" op="=" var2="1"/>
 				<placement x="%col1_x_left%" y="%row15a_y%"/>
-				<text>Boot UEFI (Launch EDK2)</text>
+				<text>Test Virtual Boot preparation</text>
 				<actions>
 					<action function="edk2validate"/>
 					<action function="edk2boot"/>
@@ -3974,22 +3974,22 @@
 
 			<text style="text_l">
 				<placement x="%col1_x_header%" y="%row3_header_y%"/>
-				<text>Booting UEFI / EDK2</text>
+				<text>Preparing Virtual Boot</text>
 			</text>
 
 			<text style="text_m">
 				<placement x="%center_x%" y="%row7_y%" placement="5"/>
-				<text>Loading UEFI firmware via kexec...</text>
+				<text>Validating and staging Virtual Boot...</text>
 			</text>
 
 			<text style="text_m">
 				<placement x="%center_x%" y="%row8_y%" placement="5"/>
-				<text>This will transfer control to EDK2.</text>
+				<text>This test does not transfer control to EDK2.</text>
 			</text>
 
 			<text style="text_m_accent">
 				<placement x="%center_x%" y="%row10_y%" placement="5"/>
-				<text>Do not power off the device.</text>
+				<text>No reboot or partition write is performed.</text>
 			</text>
 
 			<template name="console"/>
@@ -4024,13 +4024,13 @@
 			<text style="text_m_success">
 				<condition var1="tw_operation_status" var2="0"/>
 				<placement x="%center_x%" y="%row7_y%" placement="5"/>
-				<text>kexec executed successfully.</text>
+				<text>Virtual Boot staging completed.</text>
 			</text>
 
 			<text style="text_m">
 				<condition var1="tw_operation_status" var2="0"/>
 				<placement x="%center_x%" y="%row8_y%" placement="5"/>
-				<text>Control transferred to UEFI firmware.</text>
+				<text>UEFI handoff was not attempted.</text>
 			</text>
 
 			<template name="console"/>
